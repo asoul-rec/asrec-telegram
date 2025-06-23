@@ -12,7 +12,7 @@ class FileProxy(io.IOBase):
     common seeking and telling functionality.
     """
     _size: int  # Total size of this virtual file in bytes
-    _offset: int  # Internal cursor position for this part, from 0 to self._size
+    _pos: int  # Internal cursor position for this part, from 0 to self._size
 
     @property
     def size(self) -> int:
@@ -32,7 +32,7 @@ class FileProxy(io.IOBase):
         """Return the current stream position."""
         if self.closed:
             raise ValueError("I/O operation on closed file.")
-        return self._offset
+        return self._pos
 
     def seek(self, offset: int, whence: Literal[0, 1, 2] = 0) -> int:
         """
@@ -49,19 +49,19 @@ class FileProxy(io.IOBase):
             raise ValueError("I/O operation on closed file.")
 
         if whence == io.SEEK_SET:
-            new_offset = offset
+            new_pos = offset
         elif whence == io.SEEK_CUR:
-            new_offset = self._offset + offset
+            new_pos = self._pos + offset
         elif whence == io.SEEK_END:
-            new_offset = self._size + offset
+            new_pos = self._size + offset
         else:
             raise ValueError(f"Invalid whence value: {whence}")
 
-        if new_offset < 0:
-            raise OSError(f"Negative seek position {new_offset} is invalid")
+        if new_pos < 0:
+            raise OSError(f"Negative seek position {new_pos} is invalid")
 
-        self._offset = new_offset
-        return self._offset
+        self._pos = new_pos
+        return self._pos
 
 
 class PartedFile(FileProxy):
@@ -88,7 +88,14 @@ class PartedFile(FileProxy):
         self._size = size
         self._close_parent = close_parent
         self._parent_lock: AbstractContextManager = nullcontext() if parent_lock is None else parent_lock
-        self._offset = 0
+        self._pos = 0
+
+    @property
+    def offset(self) -> int:
+        """
+        The byte offset of this part within the big_file.
+        """
+        return self._base_offset
 
     def read(self, size: int = -1) -> bytes:
         """
@@ -101,18 +108,18 @@ class PartedFile(FileProxy):
         if size < -1:
             raise ValueError("read length must be non-negative or -1")
 
-        remaining_in_part = self._size - self._offset
+        remaining_in_part = self._size - self._pos
         if remaining_in_part <= 0:
             return b""
 
         read_size = remaining_in_part if size == -1 else min(size, remaining_in_part)
 
         with self._parent_lock:
-            self._big_file.seek(self._base_offset + self._offset)
+            self._big_file.seek(self._base_offset + self._pos)
             output = self._big_file.read(read_size)
 
         # Update internal offset based on the actual number of bytes read
-        self._offset += len(output)
+        self._pos += len(output)
         return output
 
     def close(self):
@@ -129,6 +136,35 @@ class PartedFile(FileProxy):
     @property
     def closed(self) -> bool:
         return self._big_file is None or self._big_file.closed
+
+    @classmethod
+    def split_file(cls, big_file: io.IOBase, part_size: int, *, file_size=None, close_parent: bool = False) -> list['PartedFile']:
+        """
+        Split a large file into smaller parts of specified size.
+
+        :param big_file: The large file to split.
+        :param part_size: The size of each part in bytes.
+        :param file_size: Optional total size of the big_file.
+          If not provided, it will be determined by seeking to the end.
+        :param close_parent: If True, closing the returned parts will also close the big_file.
+        :return: A list of PartedFile objects representing the parts of the big_file.
+        """
+        if not big_file.seekable() or not big_file.readable():
+            raise ValueError("The underlying file must be readable and seekable.")
+
+        parts = []
+        if file_size is None:
+            big_file.seek(0, io.SEEK_END)
+            total_size = big_file.tell()
+            big_file.seek(0)
+        else:
+            total_size = file_size
+
+        for offset in range(0, total_size, part_size):
+            size = min(part_size, total_size - offset)
+            parts.append(cls(big_file, offset, size, close_parent=close_parent))
+
+        return parts
 
 
 class CombinedFile(FileProxy):
@@ -153,7 +189,7 @@ class CombinedFile(FileProxy):
             self._part_sizes.append(part.tell())
         self._part_cumulative_offsets = list(accumulate(self._part_sizes, initial=0))
         self._size = self._part_cumulative_offsets[-1]
-        self._offset = 0
+        self._pos = 0
 
     def _find_part(self, offset: int):
         """Find the part index and the local offset corresponding to a global offset."""
@@ -170,15 +206,15 @@ class CombinedFile(FileProxy):
             raise ValueError("I/O operation on closed file.")
         if size < -1:
             raise ValueError("read length must be non-negative or -1")
-        if self._offset >= self._size:
+        if self._pos >= self._size:
             return b""
 
-        bytes_to_read = self._size - self._offset if size == -1 else min(size, self._size - self._offset)
+        bytes_to_read = self._size - self._pos if size == -1 else min(size, self._size - self._pos)
 
         chunks = []
         while bytes_to_read > 0:
-            part_idx, local_offset = self._find_part(self._offset)
-            assert part_idx is not None, f"invalid offset {self._offset} encountered during CombinedFile.read()"
+            part_idx, local_offset = self._find_part(self._pos)
+            assert part_idx is not None, f"invalid position {self._pos} for CombinedFile.read()"
             part = self._parts[part_idx]
             part.seek(local_offset)
 
@@ -192,7 +228,7 @@ class CombinedFile(FileProxy):
                                    f"The underlying file might be mutated")
             chunks.append(chunk)
             bytes_to_read -= read_from_this_part
-            self._offset += read_from_this_part
+            self._pos += read_from_this_part
 
         return b"".join(chunks)
 
