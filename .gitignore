@@ -1,0 +1,10 @@
+# secret files
+.idea
+*.session
+*.session-journal
+*.sqlite3
+config.json
+
+# cache files
+*.pyc
+__pycache__
