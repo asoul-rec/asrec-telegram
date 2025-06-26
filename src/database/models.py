@@ -36,6 +36,9 @@ class RawFile(Model):
     chat_id = fields.IntField()
     message_id = fields.IntField()
 
+    class Meta:
+        unique_together = (("file", "segment_idx"), ("chat_id", "message_id"))
+
 # class RawFileIDCache(Model):
 #     file_unique_id = fields.CharField(pk=True, max_length=255)
 #     video = fields.ForeignKeyField('models.File', related_name='segments')
@@ -59,6 +62,9 @@ class File(Model):
     file_folder = fields.CharField(max_length=255)
     file_name = fields.CharField(max_length=255)
     mediainfo = fields.JSONField()
+
+    class Meta:
+        unique_together = (("live", "file_folder", "file_name"), )
 
 
 class Live(Model):
