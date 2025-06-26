@@ -61,7 +61,7 @@ class File(Model):
     size = fields.IntField()
     file_folder = fields.CharField(max_length=255)
     file_name = fields.CharField(max_length=255)
-    mediainfo = fields.JSONField()
+    mediainfo = fields.JSONField(default=dict)
 
     class Meta:
         unique_together = (("live", "file_folder", "file_name"), )
@@ -70,7 +70,7 @@ class File(Model):
 class Live(Model):
     # file info
     id = fields.IntField(pk=True)
-    raw_name = fields.CharField(max_length=255)
+    raw_name = fields.CharField(max_length=255, unique=True)
     files = fields.ReverseRelation['File']
     # live info
     title = fields.CharField(max_length=255)
@@ -108,9 +108,7 @@ async def add_file(segment: Union[list[SegInfo], SegInfo], live: Live, size: int
         await RawFile.create(**si, file=file, segment_idx=i)
 
 
-async def add_live(raw_name, **kwargs):
-    if (live := await Live.get_or_none(raw_name=raw_name)) is not None:
-        return live
+async def get_or_create_live(raw_name, **kwargs):
     if (live_info := resolve_rec_name(raw_name)) is None:
         start_time = 0
         title = artist = ''
@@ -121,4 +119,4 @@ async def add_live(raw_name, **kwargs):
     kwargs.setdefault('title', title)
     kwargs.setdefault('artist', artist)
     kwargs.setdefault('start_time', start_time)
-    return await Live.create(raw_name=raw_name, **kwargs)
+    return await Live.get_or_create(kwargs, raw_name=raw_name)
