@@ -12,12 +12,12 @@ ID2ARTIST = {
 ARTIST2ID = {v: k for k, v in ID2ARTIST.items()}
 
 
-def resolve_rec_name(name: str):
+def resolve_live_raw_name(name: str):
     m = re.match(r'^\[(\d{6})] (.*) - (\S*)$', name)
     return {'date': m.group(1), 'title': m.group(2), 'artist': m.group(3)} if m else None
 
 
-def build_rec_name(date: str, title: str, artist: str):
+def build_live_raw_name(date: str, title: str, artist: str):
     return f"[{date}] {title} - {artist}"
 
 

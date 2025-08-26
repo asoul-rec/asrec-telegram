@@ -6,7 +6,7 @@ import logging
 
 from pyrogram.types import Message
 
-from .models import RawFile, SegInfo, File, Live, get_or_create_live
+from .models import RawFile, SegInfo, File, Live, get_or_create_live_by_raw_name
 
 
 async def fix_raw_file(client, chat_id, message_ids: Union[int, Iterable[int]],
@@ -58,15 +58,20 @@ async def _fix_raw_file_by_message(message: Message, keys, create_parents):
             raise ValueError("Cannot speculate file info from message without caption")
         live_name, *inner_path = Path(location).parts
         if create_parents:
-            live = await get_or_create_live(live_name)
+            live, created = await get_or_create_live_by_raw_name(live_name)
+            if created:
+                logging.info(f"Created new Live object for {live_name}")
             file_defaults = {
                 'total_segments': 1,
                 'size': file.file_size
             }
-            keys['file'] = await File.get_or_create(
+            keys['file'], created = await File.get_or_create(
                 file_defaults,
                 live=live, file_name=inner_path[-1], file_folder='/'.join(inner_path[:-1])
             )
+            if created:
+                logging.info(f"Created new File object for {live_name}/"
+                             f"{keys['file'].file_folder}/{keys['file'].file_name}")
         else:
             keys['file'] = await File.get_or_none(
                 file_name=inner_path[-1], file_folder='/'.join(inner_path[:-1]),

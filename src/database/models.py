@@ -3,7 +3,7 @@ from typing import Union, TypedDict, NotRequired
 from tortoise import Tortoise, fields, connections
 from tortoise.models import Model
 
-from src.live_info import resolve_rec_name
+from src.live_info import resolve_live_raw_name
 
 TORTOISE_ORM = {
     "connections": {"default": "sqlite://db.sqlite3"},
@@ -108,8 +108,8 @@ async def add_file(segment: Union[list[SegInfo], SegInfo], live: Live, size: int
         await RawFile.create(**si, file=file, segment_idx=i)
 
 
-async def get_or_create_live(raw_name, **kwargs):
-    if (live_info := resolve_rec_name(raw_name)) is None:
+async def get_or_create_live_by_raw_name(raw_name, **kwargs):
+    if (live_info := resolve_live_raw_name(raw_name)) is None:
         start_time = 0
         title = artist = ''
     else:
