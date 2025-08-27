@@ -1,1 +1,23 @@
-[tool.aerich]tortoise_orm = "src.database.models.TORTOISE_ORM"location = "./migrations"src_folder = "./."
+[project]
+name = "asrec-telegram"
+version = "0.0.1"
+requires-python = ">=3.12"
+authors = [
+    { name = "asoul-rec", email = "asoulranbi@gmail.com" }
+]
+dependencies = [
+    "pyrofork>=2.3.68",
+    "TgCrypto-pyrofork>=1.2.7",
+    "tortoise-orm>=0.25.1",
+]
+
+[tool.aerich]
+tortoise_orm = "src.database.models.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+
+[dependency-groups]
+dev = [
+    "av>=15.1.0",
+    "ipython>=9.5.0",
+]
