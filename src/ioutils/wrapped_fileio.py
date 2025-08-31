@@ -1,12 +1,13 @@
 import io
+from abc import ABC, abstractmethod
 from bisect import bisect_right
-from itertools import accumulate
-from typing import Literal
 from collections.abc import Sequence
 from contextlib import nullcontext, AbstractContextManager
+from itertools import accumulate
+from typing import Literal
 
 
-class FileProxy(io.IOBase):
+class FileProxy(io.IOBase, ABC):
     """
     An abstract base class for file-like proxy objects, providing
     common seeking and telling functionality.
@@ -38,12 +39,9 @@ class FileProxy(io.IOBase):
         """
         Change the stream position.
 
-        Args:
-            offset: The byte offset.
-            whence: The reference point (io.SEEK_SET, io.SEEK_CUR, io.SEEK_END).
-
-        Returns:
-            The new absolute position in this virtual file.
+        :param offset: The byte offset.
+        :param whence: The reference point (io.SEEK_SET, io.SEEK_CUR, io.SEEK_END).
+        :return: The new absolute position in this virtual file.
         """
         if self.closed:
             raise ValueError("I/O operation on closed file.")
@@ -62,6 +60,14 @@ class FileProxy(io.IOBase):
 
         self._pos = new_pos
         return self._pos
+
+    # noinspection PyTypeChecker
+    @abstractmethod
+    def read(self, size: int = -1) -> bytes:
+        if self.closed:
+            raise ValueError("I/O operation on closed file.")
+        if size < -1:
+            raise ValueError("read length must be non-negative or -1")
 
 
 class PartedFile(FileProxy):
@@ -103,11 +109,7 @@ class PartedFile(FileProxy):
         :param size: The number of bytes to read. If -1, reads to the end of the part.
         :return: The bytes read from the file part.
         """
-        if self.closed:
-            raise ValueError("I/O operation on closed file.")
-        if size < -1:
-            raise ValueError("read length must be non-negative or -1")
-
+        super().read(size)
         remaining_in_part = self._size - self._pos
         if remaining_in_part <= 0:
             return b""
@@ -138,7 +140,8 @@ class PartedFile(FileProxy):
         return self._big_file is None or self._big_file.closed
 
     @classmethod
-    def split_file(cls, big_file: io.IOBase, part_size: int, *, file_size=None, close_parent: bool = False) -> list['PartedFile']:
+    def split_file(cls, big_file: io.IOBase, part_size: int, *,
+                   file_size=None, close_parent: bool = False) -> list['PartedFile']:
         """
         Split a large file into smaller parts of specified size.
 
@@ -202,10 +205,7 @@ class CombinedFile(FileProxy):
         return part_idx, local_offset
 
     def read(self, size: int = -1) -> bytes:
-        if self.closed:
-            raise ValueError("I/O operation on closed file.")
-        if size < -1:
-            raise ValueError("read length must be non-negative or -1")
+        super().read(size)
         if self._pos >= self._size:
             return b""
 
