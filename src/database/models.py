@@ -1,8 +1,9 @@
 from collections import namedtuple
 from contextlib import asynccontextmanager
 from datetime import datetime
+from itertools import pairwise
 from pathlib import Path
-from typing import Union, TypedDict, NotRequired
+from typing import Union, TypedDict, NotRequired, Optional
 from tortoise import Tortoise, fields, connections
 from tortoise.models import Model
 
@@ -69,6 +70,24 @@ class File(Model):
 
     class Meta:
         unique_together = (("live", "file_folder", "file_name"),)
+
+    @staticmethod
+    def _validate_segments(size, sorted_segments: list[RawFile]):
+        if sorted_segments[0].offset != 0:
+            return False
+        for si, sj in pairwise(sorted_segments):
+            if si.offset + si.size != sj.offset:
+                return False
+        last_seg = sorted_segments[-1]
+        if last_seg.offset + last_seg.size != size:
+            return False
+        return True
+
+    async def get_segments(self) -> list[RawFile]:
+        segments = await self.segments.order_by('segment_idx')
+        if len(segments) != self.total_segments or not self._validate_segments(self.size, segments):
+            raise RuntimeError(f"{self} is incomplete or corrupted")
+        return segments
 
 
 class Live(Model):
@@ -142,7 +161,7 @@ def path_to_named_parts(path: Union[str, Path]):
     )(live_name, '/'.join(inner_path[:-1]), inner_path[-1])
 
 
-async def get_file_by_path(path: Union[str, Path]):
+async def get_file_by_path(path: Union[str, Path]) -> Optional[File]:
     path_parts = path_to_named_parts(path)
     live = await Live.get_or_none(raw_name=path_parts.live_name)
     if live is not None:

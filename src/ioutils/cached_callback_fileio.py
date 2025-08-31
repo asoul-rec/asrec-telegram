@@ -19,7 +19,7 @@ class CachedCustomFile(FileProxy):
     # starting offset is evicted. This is efficient for sequential reads but may not
     # be ideal for highly random access patterns, where an LRU (Least Recently Used)
     # cache might be more suitable.
-    def __init__(self, reader: Callable[[int], tuple[int, bytes]], size: int, buffer_size: float = inf):
+    def __init__(self, reader: Callable[[int], tuple[int, bytes]], size: int, buffer_size: int = inf):
         """
         Initializes the CachedCustomFile. The callback function must adhere to the following contract:
             - It accepts one argument: `offset` (int), the position from
