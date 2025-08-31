@@ -1,4 +1,7 @@
+from collections import namedtuple
+from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Union, TypedDict, NotRequired
 from tortoise import Tortoise, fields, connections
 from tortoise.models import Model
@@ -39,6 +42,7 @@ class RawFile(Model):
     class Meta:
         unique_together = (("file", "segment_idx"), ("chat_id", "message_id"))
 
+
 # class RawFileIDCache(Model):
 #     file_unique_id = fields.CharField(pk=True, max_length=255)
 #     video = fields.ForeignKeyField('models.File', related_name='segments')
@@ -64,7 +68,7 @@ class File(Model):
     mediainfo = fields.JSONField(default=dict)
 
     class Meta:
-        unique_together = (("live", "file_folder", "file_name"), )
+        unique_together = (("live", "file_folder", "file_name"),)
 
 
 class Live(Model):
@@ -88,6 +92,15 @@ async def init():
 
 async def shutdown():
     await connections.close_all()
+
+
+@asynccontextmanager
+async def connect():
+    await init()
+    try:
+        yield
+    finally:
+        await shutdown()
 
 
 # async def add_raw_file(file_unique_id: str, chat_id: int, message_id: int, segment_idx: int, size: int):
@@ -120,3 +133,19 @@ async def get_or_create_live_by_raw_name(raw_name, **kwargs):
     kwargs.setdefault('artist', artist)
     kwargs.setdefault('start_time', start_time)
     return await Live.get_or_create(kwargs, raw_name=raw_name)
+
+
+def path_to_named_parts(path: Union[str, Path]):
+    live_name, *inner_path = Path(path).parts
+    return namedtuple(
+        'PathParts', ['live_name', 'file_folder', 'file_name'],
+    )(live_name, '/'.join(inner_path[:-1]), inner_path[-1])
+
+
+async def get_file_by_path(path: Union[str, Path]):
+    path_parts = path_to_named_parts(path)
+    live = await Live.get_or_none(raw_name=path_parts.live_name)
+    if live is not None:
+        return await File.get_or_none(
+            live=live, file_folder=path_parts.file_folder, file_name=path_parts.file_name
+        )

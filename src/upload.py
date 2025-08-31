@@ -4,10 +4,9 @@ from pathlib import Path
 import logging
 from typing import Union
 
-from .database import SegInfo
 from pyrogram import Client
 from pyrogram.enums import ParseMode
-from src.database import add_file, get_or_create_live_by_raw_name
+from .database import SegInfo, add_file, get_or_create_live_by_raw_name, path_to_named_parts
 from .ioutils.wrapped_fileio import PartedFile
 
 
@@ -38,7 +37,7 @@ async def upload_file(client: Client, chat_id: int,
 
     file_path = Path(base_dir) / location
     file_stat = file_path.stat()
-    live_name, *inner_path = Path(location).parts
+    location_parts = path_to_named_parts(location)
 
     file_size = file_stat.st_size
     is_video = file_size <= size_limit and file_path.suffix[1:] in ['mp4', 'webm', 'flv', 'mkv', 'ts']
@@ -60,7 +59,10 @@ async def upload_file(client: Client, chat_id: int,
                 file_unique_id=uploaded_file.file_unique_id, chat_id=chat_id, message_id=message.id,
                 size=f_part.size, offset=f_part.offset
             ))
-    await add_file(segment=segments, live=await get_or_create_live_by_raw_name(raw_name=live_name),
-                   size=file_size,
-                   file_folder='/'.join(inner_path[:-1]),
-                   file_name=inner_path[-1], mediainfo={})
+    await add_file(
+        segment=segments,
+        live=await get_or_create_live_by_raw_name(raw_name=location_parts.live_name),
+        size=file_size,
+        file_folder=location_parts.file_folder,
+        file_name=location_parts.live_name, mediainfo={}
+    )
