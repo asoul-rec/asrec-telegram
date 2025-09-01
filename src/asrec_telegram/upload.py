@@ -61,8 +61,8 @@ async def upload_file(client: Client, chat_id: int,
             ))
     await add_file(
         segment=segments,
-        live=await get_or_create_live_by_raw_name(raw_name=location_parts.live_name),
+        live=(await get_or_create_live_by_raw_name(raw_name=location_parts.live_name))[0],
         size=file_size,
         file_folder=location_parts.file_folder,
-        file_name=location_parts.live_name, mediainfo={}
+        file_name=location_parts.file_name, mediainfo={}
     )
