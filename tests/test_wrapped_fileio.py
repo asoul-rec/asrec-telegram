@@ -2,7 +2,7 @@ import io
 import random
 from unittest import TestCase
 
-from src.ioutils.wrapped_fileio import PartedFile, CombinedFile
+from asrec_telegram.ioutils.wrapped_fileio import PartedFile, CombinedFile
 
 
 class TestPartedFile(TestCase):

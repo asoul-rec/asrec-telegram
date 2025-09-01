@@ -11,13 +11,17 @@ dependencies = [
     "tortoise-orm>=0.25.1",
 ]
 
-[tool.aerich]
-tortoise_orm = "src.database.models.TORTOISE_ORM"
-location = "./migrations"
-src_folder = "./."
-
 [dependency-groups]
 dev = [
     "av>=15.1.0",
     "ipython>=9.5.0",
 ]
+
+[tool.uv.build-backend]
+module-root = "src"
+
+[tool.aerich]
+tortoise_orm = "src.database.models.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+

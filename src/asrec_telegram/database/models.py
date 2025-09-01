@@ -7,13 +7,13 @@ from typing import Union, TypedDict, NotRequired, Optional
 from tortoise import Tortoise, fields, connections
 from tortoise.models import Model
 
-from src.live_info import resolve_live_raw_name
+from ..live_info import resolve_live_raw_name
 
 TORTOISE_ORM = {
     "connections": {"default": "sqlite://db.sqlite3"},
     "apps": {
         "models": {
-            "models": ["src.database.models", "aerich.models"],
+            "models": ["asrec_telegram.database.models", "aerich.models"],
             "default_connection": "default",
         },
     },
@@ -104,7 +104,7 @@ class Live(Model):
 async def init():
     await Tortoise.init(
         db_url='sqlite://db.sqlite3',
-        modules={'models': ['src.database.models']},
+        modules={'models': ['asrec_telegram.database.models']},
     )
     await Tortoise.generate_schemas()
 

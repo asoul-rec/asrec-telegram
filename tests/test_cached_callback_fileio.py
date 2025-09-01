@@ -2,7 +2,7 @@ import random
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from src.ioutils.cached_callback_fileio import CachedCustomFile
+from asrec_telegram.ioutils.cached_callback_fileio import CachedCustomFile
 
 
 class TestCachedCustomFile(TestCase):
