@@ -90,6 +90,8 @@ class CachedCustomFile(FileProxy):
 
         # 1. Fetch a new data chunk from the external reader.
         read_offset, read_data = self._reader(offset)
+        if not isinstance(read_offset, int) or not isinstance(read_data, bytes):
+            raise TypeError("CachedCustomFile callback reader returns invalid data format")
         self._remaining_buffer_size -= len(read_data)
 
         # 2. Evict the oldest chunk(s) if the buffer size is exceeded.

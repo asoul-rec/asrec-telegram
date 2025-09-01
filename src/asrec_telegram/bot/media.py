@@ -1,7 +1,8 @@
 import asyncio
 import logging
 from asyncio import run_coroutine_threadsafe, AbstractEventLoop
-from collections.abc import AsyncIterable, Sequence, AsyncGenerator
+from collections import defaultdict
+from collections.abc import Sequence, AsyncGenerator
 from typing import Optional, Union
 
 from pyrogram import Client
@@ -19,59 +20,92 @@ def resolve_media(message: Message):
 
 
 class MediaReader:
+    # Future work: prefetch 1 chunk to reduce jitter?
     _offset = None
     _aiter: Optional[AsyncGenerator[bytes]]
-    _global_active_aiter: Optional[AsyncGenerator] = None
+    _client_active_aiter: defaultdict[Client, Optional[AsyncGenerator]] = defaultdict(lambda: None)
+    _client_lock: defaultdict[Client, asyncio.Lock] = defaultdict(asyncio.Lock)
+    _client_loop: dict[Client, AbstractEventLoop] = {}
     CHUNK_SIZE = 1 << 20  # pyrogram specified chunk size
-    TIMEOUT = 10
+    TIMEOUT = 5
+    MAX_RETRY = 3
 
     def __init__(self, client: Client, message: Message, loop=None):
         resolve_media(message)  # sanity check
         self.client = client
         self.message = message
-        self.loop = asyncio.get_running_loop() if loop is None else loop
         self._aiter = None
+        self.loop = asyncio.get_running_loop() if loop is None else loop
+        # Ensure consistency for each Client
+        if client not in self._client_loop:
+            self._client_loop[client] = self.loop
+        else:
+            if self.loop is not self._client_loop[client]:
+                raise RuntimeError(f"Cannot create MediaReader in different event loops for the same client")
 
     # Note: We do not intend to download concurrently, so we should ensure there is
-    # only 1 active Client.get_file() aiter globally for MediaReader.
-    # Otherwise, the abandoned aiter will still block Client.get_file_semaphore.
-    @classmethod
-    async def _replace_active_aiter(cls, ait):
-        if cls._global_active_aiter is not None:
-            await cls._global_active_aiter.aclose()
-            # if loop != old_loop:
-            #     raise RuntimeError("All MediaReader reads must run in the same loop globally.")
-        cls._global_active_aiter = ait
+    # only 1 active Client.get_file() aiter per Client holding in any MediaReader.
+    # Otherwise, the abandoned aiter will block Client.get_file_semaphore.
+    async def _replace_aiter(self, ait) -> None:
+        old_ait = self._client_active_aiter[self.client]
+        if old_ait is not None:
+            await old_ait.aclose()
+        self._client_active_aiter[self.client] = self._aiter = ait
 
-    # Note: We must create stream_media coroutine in the event loop running in main thread.
-    # Otherwise, Pyrogram will apply async_to_sync magic on it.
-    async def _read_coroutine(self, replace_chunk_offset=None):
-        if replace_chunk_offset is not None:
-            self._aiter = self.client.stream_media(self.message, offset=replace_chunk_offset)
-            await self._replace_active_aiter(self._aiter)
-        data = await anext(self._aiter, None)
-        if data is None:
-            raise RuntimeError("reached the end of current media")
-        return data
+    def _is_holding_active_aiter(self) -> bool:
+        return self._aiter is not None and self._aiter is self._client_active_aiter[self.client]
 
-    def read_threadsafe(self, offset: int) -> tuple[int, bytes]:
+    async def read_coroutine(self, offset: int) -> tuple[int, bytes]:
+        """
+        Read from telegram. This is not designed for downloading concurrently with the same Client.
+        Although this function is reentrant, severe performance degradation should be expected.
+        :param offset: the position from which the data is requested
+        :return: tuple (`read_offset`, `data`), the raw bytes (data) and its real offset (read_offset) in the file
+        """
         output_chunk_offset = offset // self.CHUNK_SIZE
         output_offset = output_chunk_offset * self.CHUNK_SIZE
-        if self._offset != output_offset or self._aiter is None or self._aiter is not self._global_active_aiter:
-            self._offset = output_offset
-            new_chunk_offset = output_chunk_offset
-            logging.info(f"Starting a new downloading stream for message {self.message.chat.id}/{self.message.id}, "
-                         f"offset {output_offset}")
-        else:
-            new_chunk_offset = None
-            logging.debug(f"Continue downloading new piece with offset {output_offset}")
+        async with self._client_lock[self.client]:
+            # Replace aiter when needed
+            if self._offset != output_offset or not self._is_holding_active_aiter():
+                await self._replace_aiter(self.client.stream_media(self.message, offset=output_chunk_offset))
+                self._offset = output_offset
+                logging.info(f"Starting a new downloading stream for message {self.message.chat.id}/{self.message.id}, "
+                             f"offset {output_offset}")
+            else:
+                logging.debug(f"Continue downloading new piece with offset {output_offset}")
+            # Read from aiter
+            data = await anext(self._aiter, None)
+            if data is None:
+                # Internal logic error: trying to get data from closed stream. Possible causes may include
+                # reading beyond the end of current media or Telegram server / upstream error
+                raise RuntimeError("media stream is closed")
+            self._offset += len(data)
+        if len(data) != self.CHUNK_SIZE:
+            logging.info(f"Received chunk size {len(data)}. This should be the final piece of the media.")
+        return output_offset, data
 
-        future = run_coroutine_threadsafe(self._read_coroutine(new_chunk_offset), self.loop)
-        result = future.result(self.TIMEOUT)
-        self._offset += len(result)
-        if len(result) != self.CHUNK_SIZE:
-            logging.info(f"Received chunk size {len(result)}. This should be the final piece of the media.")
-        return output_offset, result
+    def read_threadsafe(self, offset: int) -> tuple[int, bytes]:
+        # Caution: always modify self in self.loop by run_coroutine_threadsafe rather than in this thread
+        """
+        Read in a different thread. Note that this CANNOT be used for running synchronously
+        in the same thread of the event loop since that will result in deadlock.
+        This implements the reader callback interface for CachedCustomFile
+        :param offset: the position from which the data is requested
+        :return: tuple (`read_offset`, `data`), the raw bytes (data) and its real offset (read_offset) in the file
+        """
+        for i in range(self.MAX_RETRY + 1):
+            try:
+                future = run_coroutine_threadsafe(self.read_coroutine(offset), self.loop)
+                return future.result(self.TIMEOUT)
+            except Exception as e:
+                if i < self.MAX_RETRY:
+                    logging.warning(f"An exception occurred during reading: {e!r}, "
+                                    f"retrying {i + 1}/{self.MAX_RETRY}...")
+                    # The current aiter is likely broken so we discard it
+                    run_coroutine_threadsafe(self._replace_aiter(None), self.loop).result(self.TIMEOUT)
+                else:
+                    logging.error(f"An exception occurred during reading: {e!r}, exiting.")
+        raise IOError("Failed to load data from Telegram")
 
     def get_size(self) -> Optional[int]:
         try:
