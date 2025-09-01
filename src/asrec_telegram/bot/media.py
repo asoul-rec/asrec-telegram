@@ -26,6 +26,7 @@ class MediaReader:
     TIMEOUT = 10
 
     def __init__(self, client: Client, message: Message, loop=None):
+        resolve_media(message)  # sanity check
         self.client = client
         self.message = message
         self.loop = asyncio.get_running_loop() if loop is None else loop
@@ -50,13 +51,13 @@ class MediaReader:
             await self._replace_active_aiter(self._aiter)
         data = await anext(self._aiter, None)
         if data is None:
-            raise EOFError("reached the end of current media")
+            raise RuntimeError("reached the end of current media")
         return data
 
     def read_threadsafe(self, offset: int) -> tuple[int, bytes]:
         output_chunk_offset = offset // self.CHUNK_SIZE
         output_offset = output_chunk_offset * self.CHUNK_SIZE
-        if self._offset != output_offset or self._aiter is None:
+        if self._offset != output_offset or self._aiter is None or self._aiter is not self._global_active_aiter:
             self._offset = output_offset
             new_chunk_offset = output_chunk_offset
             logging.info(f"Starting a new downloading stream for message {self.message.chat.id}/{self.message.id}, "

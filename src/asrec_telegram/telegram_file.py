@@ -1,6 +1,5 @@
+import logging
 from typing import Union
-
-import pyrogram
 from pathlib import Path
 
 from pyrogram import Client
@@ -18,6 +17,7 @@ async def open_telegram(client: Client, path: Union[str, Path]):
     chat_id = None
     message_ids = []
     raw_files = await file.get_segments()
+    logging.info(f"loading file '{path}' with {len(raw_files)} segments")
     for raw_file in raw_files:
         if chat_id is None:
             chat_id = raw_file.chat_id
