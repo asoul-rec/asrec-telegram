@@ -94,10 +94,11 @@ class MediaReader:
         :return: tuple (`read_offset`, `data`), the raw bytes (data) and its real offset (read_offset) in the file
         """
         for i in range(self.MAX_RETRY + 1):
+            future = run_coroutine_threadsafe(self.read_coroutine(offset), self.loop)
             try:
-                future = run_coroutine_threadsafe(self.read_coroutine(offset), self.loop)
                 return future.result(self.TIMEOUT)
             except Exception as e:
+                future.cancel()
                 if i < self.MAX_RETRY:
                     logging.warning(f"An exception occurred during reading: {e!r}, "
                                     f"retrying {i + 1}/{self.MAX_RETRY}...")
