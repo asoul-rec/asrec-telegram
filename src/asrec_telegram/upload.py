@@ -1,21 +1,29 @@
 # import os.path
 import io
+import time
 from pathlib import Path
 import logging
-from typing import Union
+from typing import Union, Optional
 
 from pyrogram import Client
 from pyrogram.enums import ParseMode
+from pyrogram.types import Message
+
 from .database import SegInfo, add_file, get_or_create_live_by_raw_name, path_to_named_parts
 from .ioutils.wrapped_fileio import PartedFile
 
 
 async def upload_file(client: Client, chat_id: int,
                       base_dir: Union[str, Path], location: Union[str, Path], size_limit=2000 << 20):
-    def progress(c, t):
-        logging.debug(f"uploading '{location}', {c / 1048576:.2f} / {t / 1048576:.2f} MB")
+    _progress_time = 0
 
-    async def upload(fp):
+    def progress(c, t):
+        nonlocal _progress_time
+        if time.time() - _progress_time > 5:
+            logging.debug(f"uploading '{location}', {c / 1048576:.2f} / {t / 1048576:.2f} MB")
+            _progress_time = time.time()
+
+    async def upload(fp) -> Optional[Message]:
         kwargs = {'chat_id': chat_id, 'caption': location, 'parse_mode': ParseMode.DISABLED, 'progress': progress}
         try:
             if is_video:
@@ -25,7 +33,6 @@ async def upload_file(client: Client, chat_id: int,
         except Exception as e:
             logging.error(f"failed to upload '{location}': {e!r}")
             return
-
         if message_upload is None:
             logging.warning(f"cancelled uploading '{location}'")
             return
