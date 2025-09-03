@@ -34,4 +34,3 @@ async def open_telegram(client: Client, path: Union[str, Path]):
                                f"the media size on Telegram server ({remote_size} bytes)")
         segments_fileio.append(CachedCustomFile(reader.read_threadsafe, size, buffer_size=64 << 20))
     return CombinedFile(segments_fileio)
-

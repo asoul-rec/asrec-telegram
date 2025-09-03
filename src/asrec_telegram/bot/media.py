@@ -3,6 +3,7 @@ import logging
 from asyncio import run_coroutine_threadsafe, AbstractEventLoop
 from collections import defaultdict
 from collections.abc import Sequence, AsyncGenerator
+from contextlib import nullcontext
 from typing import Optional, Union
 
 from pyrogram import Client
@@ -41,16 +42,18 @@ class MediaReader:
             self._client_loop[client] = self.loop
         else:
             if self.loop is not self._client_loop[client]:
-                raise RuntimeError(f"Cannot create MediaReader in different event loops for the same client")
+                raise RuntimeError("Cannot create MediaReader in different event loops for the same client")
 
     # Note: We do not intend to download concurrently, so we should ensure there is
     # only 1 active Client.get_file() aiter per Client holding in any MediaReader.
     # Otherwise, the abandoned aiter will block Client.get_file_semaphore.
-    async def _replace_aiter(self, ait) -> None:
-        old_ait = self._client_active_aiter[self.client]
-        if old_ait is not None:
-            await old_ait.aclose()
-        self._client_active_aiter[self.client] = self._aiter = ait
+    async def _replace_aiter(self, ait, acquire_lock=False) -> None:
+        ctx = self._client_lock[self.client] if acquire_lock else nullcontext()
+        async with ctx:
+            old_ait = self._client_active_aiter[self.client]
+            if old_ait is not None:
+                await old_ait.aclose()
+            self._client_active_aiter[self.client] = self._aiter = ait
 
     def _is_holding_active_aiter(self) -> bool:
         return self._aiter is not None and self._aiter is self._client_active_aiter[self.client]
@@ -103,9 +106,15 @@ class MediaReader:
                     logging.warning(f"An exception occurred during reading: {e!r}, "
                                     f"retrying {i + 1}/{self.MAX_RETRY}...")
                     # The current aiter is likely broken so we discard it
-                    run_coroutine_threadsafe(self._replace_aiter(None), self.loop).result(self.TIMEOUT)
+                    try:
+                        run_coroutine_threadsafe(
+                            self._replace_aiter(None, acquire_lock=True), self.loop).result(self.TIMEOUT)
+                    except TimeoutError:
+                        logging.error(f"Timeout when discarding the active aiter"
+                                      f"after trying to cancel it. Exiting...")
+                        break
                 else:
-                    logging.error(f"An exception occurred during reading: {e!r}, exiting.")
+                    logging.error(f"An exception occurred during reading: {e!r}. Exiting...")
         raise IOError("Failed to load data from Telegram")
 
     def get_size(self) -> Optional[int]:

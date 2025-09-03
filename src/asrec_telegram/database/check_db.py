@@ -6,7 +6,7 @@ import logging
 
 from pyrogram.types import Message
 
-from .models import RawFile, SegInfo, File, Live, get_or_create_live_by_raw_name
+from .models import RawFile, File, get_or_create_live_by_raw_name
 
 
 async def fix_raw_file(client, chat_id, message_ids: Union[int, Iterable[int]],

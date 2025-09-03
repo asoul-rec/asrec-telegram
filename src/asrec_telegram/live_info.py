@@ -1,5 +1,4 @@
 import re
-import datetime
 
 ID2ARTIST = {
     'a': "向晚大魔王",
