@@ -1,9 +1,10 @@
 # secret files
 .idea
+/bak/
 *.session
 *.session-journal
 *.sqlite3*
-config.json
+/config.json
 
 # Python-generated files
 __pycache__/

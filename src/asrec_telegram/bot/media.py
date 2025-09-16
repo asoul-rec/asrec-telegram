@@ -110,7 +110,7 @@ class MediaReader:
                         run_coroutine_threadsafe(
                             self._replace_aiter(None, acquire_lock=True), self.loop).result(self.TIMEOUT)
                     except TimeoutError:
-                        logging.error(f"Timeout when discarding the active aiter"
+                        logging.error(f"Timeout when discarding the active aiter "
                                       f"after trying to cancel it. Exiting...")
                         break
                 else:
