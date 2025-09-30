@@ -12,6 +12,7 @@ from pyrogram.types import Message
 from .database import SegInfo, add_file, get_or_create_live_by_raw_name, path_to_named_parts
 from .ioutils.wrapped_fileio import PartedFile
 
+logger = logging.getLogger(__package__)
 
 async def upload_file(client: Client, chat_id: int,
                       base_dir: Union[str, Path], location: Union[str, Path], size_limit=2000 << 20):
@@ -20,7 +21,7 @@ async def upload_file(client: Client, chat_id: int,
     def progress(c, t):
         nonlocal _progress_time
         if time.time() - _progress_time > 5:
-            logging.debug(f"uploading '{location}', {c / 1048576:.2f} / {t / 1048576:.2f} MB")
+            logger.debug(f"uploading '{location}', {c / 1048576:.2f} / {t / 1048576:.2f} MB")
             _progress_time = time.time()
 
     async def upload(fp) -> Optional[Message]:
@@ -31,12 +32,12 @@ async def upload_file(client: Client, chat_id: int,
             else:
                 message_upload = await client.send_document(document=fp, force_document=True, **kwargs)
         except Exception as e:
-            logging.error(f"failed to upload '{location}': {e!r}")
+            logger.error(f"failed to upload '{location}': {e!r}")
             return
         if message_upload is None:
-            logging.warning(f"cancelled uploading '{location}'")
+            logger.warning(f"cancelled uploading '{location}'")
             return
-        logging.info(f"successfully uploaded '{location}'")
+        logger.info(f"successfully uploaded '{location}'")
         return message_upload
 
     if not isinstance(chat_id, int):

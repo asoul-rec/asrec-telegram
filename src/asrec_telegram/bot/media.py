@@ -9,6 +9,8 @@ from typing import Optional, Union
 from pyrogram import Client
 from pyrogram.types import Message
 
+logger = logging.getLogger(__package__)
+
 
 def resolve_media(message: Message):
     available_media = ("audio", "document", "photo", "sticker", "animation", "video", "voice", "video_note",
@@ -72,10 +74,10 @@ class MediaReader:
             if self._offset != output_offset or not self._is_holding_active_aiter():
                 await self._replace_aiter(self.client.stream_media(self.message, offset=output_chunk_offset))
                 self._offset = output_offset
-                logging.info(f"Starting a new downloading stream for message {self.message.chat.id}/{self.message.id}, "
-                             f"offset {output_offset}")
+                logger.info(f"Starting a new downloading stream for message {self.message.chat.id}/{self.message.id}, "
+                            f"offset {output_offset}")
             else:
-                logging.debug(f"Continue downloading new piece with offset {output_offset}")
+                logger.debug(f"Continue downloading new piece with offset {output_offset}")
             # Read from aiter
             data = await anext(self._aiter, None)
             if data is None:
@@ -84,7 +86,7 @@ class MediaReader:
                 raise RuntimeError("media stream is closed")
             self._offset += len(data)
         if len(data) != self.CHUNK_SIZE:
-            logging.info(f"Received chunk size {len(data)}. This should be the final piece of the media.")
+            logger.info(f"Received chunk size {len(data)}. This should be the final piece of the media.")
         return output_offset, data
 
     def read_threadsafe(self, offset: int) -> tuple[int, bytes]:
@@ -103,18 +105,18 @@ class MediaReader:
             except Exception as e:
                 future.cancel()
                 if i < self.MAX_RETRY:
-                    logging.warning(f"An exception occurred during reading: {e!r}, "
-                                    f"retrying {i + 1}/{self.MAX_RETRY}...")
+                    logger.warning(f"An exception occurred during reading: {e!r}, "
+                                   f"retrying {i + 1}/{self.MAX_RETRY}...")
                     # The current aiter is likely broken so we discard it
                     try:
                         run_coroutine_threadsafe(
                             self._replace_aiter(None, acquire_lock=True), self.loop).result(self.TIMEOUT)
                     except TimeoutError:
-                        logging.error(f"Timeout when discarding the active aiter "
-                                      f"after trying to cancel it. Exiting...")
+                        logger.error(f"Timeout when discarding the active aiter "
+                                     f"after trying to cancel it. Exiting...")
                         break
                 else:
-                    logging.error(f"An exception occurred during reading: {e!r}. Exiting...")
+                    logger.error(f"An exception occurred during reading: {e!r}. Exiting...")
         raise IOError("Failed to load data from Telegram")
 
     def get_size(self) -> Optional[int]:
@@ -125,7 +127,7 @@ class MediaReader:
 
 
 async def get_media_readers(
-        client: Client, chat_id, message_ids: Union[int, Sequence[int]]
+    client: Client, chat_id, message_ids: Union[int, Sequence[int]]
 ) -> Union[MediaReader, list[MediaReader]]:
     """
     Build media readers from Telegram message ids

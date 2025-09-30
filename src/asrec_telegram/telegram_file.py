@@ -8,6 +8,8 @@ from .database import get_file_by_path
 from .bot.media import get_media_readers
 from .ioutils import CachedCustomFile, CombinedFile
 
+logger = logging.getLogger(__package__)
+
 
 async def open_telegram(client: Client, path: Union[str, Path]):
     file = await get_file_by_path(path)
@@ -17,7 +19,7 @@ async def open_telegram(client: Client, path: Union[str, Path]):
     chat_id = None
     message_ids = []
     raw_files = await file.get_segments()
-    logging.info(f"loading file '{path}' with {len(raw_files)} segments")
+    logger.info(f"loading file '{path}' with {len(raw_files)} segments")
     for raw_file in raw_files:
         if chat_id is None:
             chat_id = raw_file.chat_id

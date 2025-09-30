@@ -8,6 +8,8 @@ from pyrogram.types import Message
 
 from .models import RawFile, File, get_or_create_live_by_raw_name
 
+logger = logging.getLogger(__package__)
+
 
 async def fix_raw_file(client, chat_id, message_ids: Union[int, Iterable[int]],
                        create_parents=False, continue_on_error=False, **kwargs):
@@ -36,7 +38,7 @@ async def fix_raw_file(client, chat_id, message_ids: Union[int, Iterable[int]],
         try:
             await _fix_raw_file_by_message(message, keys, create_parents)
         except Exception as e:
-            logging.error(f"Failed to fix raw file for message {message.id}: {e!r}")
+            logger.error(f"Failed to fix raw file for message {message.id}: {e!r}")
             if not continue_on_error:
                 raise
 
@@ -60,7 +62,7 @@ async def _fix_raw_file_by_message(message: Message, keys, create_parents):
         if create_parents:
             live, created = await get_or_create_live_by_raw_name(live_name)
             if created:
-                logging.info(f"Created new Live object for {live_name}")
+                logger.info(f"Created new Live object for {live_name}")
             file_defaults = {
                 'total_segments': 1,
                 'size': file.file_size
@@ -70,8 +72,8 @@ async def _fix_raw_file_by_message(message: Message, keys, create_parents):
                 live=live, file_name=inner_path[-1], file_folder='/'.join(inner_path[:-1])
             )
             if created:
-                logging.info(f"Created new File object for {live_name}/"
-                             f"{keys['file'].file_folder}/{keys['file'].file_name}")
+                logger.info(f"Created new File object for {live_name}/"
+                            f"{keys['file'].file_folder}/{keys['file'].file_name}")
         else:
             keys['file'] = await File.get_or_none(
                 file_name=inner_path[-1], file_folder='/'.join(inner_path[:-1]),
