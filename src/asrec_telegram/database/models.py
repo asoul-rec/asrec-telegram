@@ -105,6 +105,7 @@ async def init():
     await Tortoise.init(
         db_url='sqlite://db.sqlite3',
         modules={'models': ['asrec_telegram.database.models']},
+        _enable_global_fallback=True,
     )
     await Tortoise.generate_schemas()
 
